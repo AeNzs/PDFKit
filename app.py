@@ -8,6 +8,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from core.pdf_sign import get_resource_path
+from core.version import APP_NAME, APP_VERSION
 from ui.main_window import MainWindow
 
 
@@ -21,7 +22,8 @@ def main() -> int:
             pass
 
     app = QApplication(sys.argv)
-    app.setApplicationName("PDF整理工具")
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
 
     logo_path = get_resource_path(os.path.join("assets", "applogo.png"))
     if os.path.isfile(logo_path):

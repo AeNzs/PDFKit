@@ -9,12 +9,18 @@ Aplikasi desktop Windows berbasis **PySide6** yang menyatukan 5 alur kerja dokum
 1. **01 PDF Split & TTD (Split PDF + Tanda Tangan Otomatis)**
    - Memisahkan halaman PDF sumber berdasarkan kata kunci di file Excel (Kolom A: kata kunci, Kolom B: nama file output).
    - Menempel gambar tanda tangan (`.png` / `.jpg`) secara otomatis berdasarkan teks jangkar (`PyMuPDF`) maupun koordinat halaman.
+   - **Preview & Atur Koordinat TTD interaktif:** tampilkan halaman PDF asli beserta posisi gambar tanda tangan, seret kotak TTD untuk menggeser koordinat, seret sudut kanan-bawah untuk ubah ukuran, atau klik dua kali untuk memindahkan posisi dengan koordinat PDF real-time.
    - Mendukung tambah, edit, hapus, simpan, muat, dan reset aturan tanda tangan (`signature_rules.json`).
 2. **02 Pindah File Excel (Batch File Mover)**
    - Membaca `mapping.xlsx` langsung via `openpyxl` (mulai baris 2, Kolom A: nama file, Kolom B: folder tujuan) tanpa perlu Microsoft Excel terinstal.
    - Fitur cari `mapping.xlsx` otomatis ke folder induk, preview status file sebelum dipindahkan, serta ringkasan hasil nyata (*Dipindahkan*, *Tidak Ditemukan*, *Kesalahan*).
 3. **03 Export Daftar File (List Exporter)**
    - Menghasilkan file teks UTF-8 (`folderlist.txt`, `filelist.txt`, `folder_file_list.txt`) dari satu folder target lengkap dengan panel preview sebelum export.
+4. **04 Mapping by Logic (Tanpa Excel)**
+   - Mode 1: membuat folder invoice otomatis (`PJI-{PT}-{BULAN}物资结算开票资料`) dari file bulanan mentah lewat **Tabel Alias Kode -> PT** & Regex, memindahkan file bulanan (`MOVE`), lalu otomatis menyalin (`COPY`) file tetap (konsinyasi, NPWP, dll.) dari 1, 2, 3, atau lebih jalur folder sumber (termasuk folder jaringan UNC).
+   - Mode 2: memindai subfolder yang sudah ada via patokan Regex dan menyisipkan file master yang cocok.
+5. **Auto-Update & Cek Versi**
+   - Pengecekan versi otomatis ke GitHub Releases saat aplikasi dibuka serta tombol **Cek Update** manual dengan progress download & auto-restart installer.
 
 ---
 

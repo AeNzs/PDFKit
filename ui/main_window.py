@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from typing import Dict
+from typing import Dict, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -22,10 +23,14 @@ from PySide6.QtWidgets import (
 
 from core.i18n import I18n, LANGUAGE_LABELS, SUPPORTED_LANGUAGES, WATERMARK_TEXT
 from core.pdf_sign import get_resource_path
+from core.updater import ReleaseInfo
+from core.version import APP_VERSION
 from ui.tab_file_mover import FileMoverTab
 from ui.tab_list_exporter import ListExporterTab
+from ui.tab_logic_mapper import LogicMapperTab
 from ui.tab_pdf_sign import PdfSignTab
 from ui.theme import build_stylesheet
+from ui.update_dialog import UpdateCheckWorker, UpdateDialog
 
 
 class MainWindow(QMainWindow):
@@ -36,6 +41,8 @@ class MainWindow(QMainWindow):
         self.i18n = I18n(initial_lang)
         self._theme_mode = "light"
         self._rail_collapsed = False
+        self._update_worker: Optional[UpdateCheckWorker] = None
+        self._manual_update_check = False
 
         self.resize(1160, 780)
         self.setMinimumSize(900, 640)
@@ -47,6 +54,9 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._apply_theme("light")
         self._retranslate_all()
+
+        # Silent background update check shortly after window opens
+        QTimer.singleShot(1500, lambda: self._check_updates(manual=False))
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -107,7 +117,7 @@ class MainWindow(QMainWindow):
         self.nav_group.setExclusive(True)
 
         self.nav_buttons: list[QPushButton] = []
-        for idx in range(3):
+        for idx in range(4):
             btn = QPushButton()
             btn.setObjectName("NavButton")
             btn.setCheckable(True)
@@ -121,7 +131,12 @@ class MainWindow(QMainWindow):
 
         rail_layout.addStretch(1)
 
-        # Watermark seal stamp at bottom of rail
+        # Current version label + watermark seal stamp at bottom of rail
+        self.version_lbl = QLabel(f"v{APP_VERSION}")
+        self.version_lbl.setObjectName("BrandSubtitle")
+        self.version_lbl.setAlignment(Qt.AlignCenter)
+        rail_layout.addWidget(self.version_lbl)
+
         self.watermark_stamp = QLabel(WATERMARK_TEXT)
         self.watermark_stamp.setObjectName("WatermarkStamp")
         self.watermark_stamp.setAlignment(Qt.AlignCenter)
@@ -171,6 +186,11 @@ class MainWindow(QMainWindow):
         self.theme_btn.clicked.connect(self._toggle_theme)
         top_layout.addWidget(self.theme_btn)
 
+        self.update_btn = QPushButton()
+        self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn.clicked.connect(lambda: self._check_updates(manual=True))
+        top_layout.addWidget(self.update_btn)
+
         right_layout.addWidget(top_bar)
 
         # Stacked workflow pages
@@ -178,10 +198,12 @@ class MainWindow(QMainWindow):
         self.pdf_tab = PdfSignTab(self.i18n)
         self.mover_tab = FileMoverTab(self.i18n)
         self.export_tab = ListExporterTab(self.i18n)
+        self.logic_tab = LogicMapperTab(self.i18n)
 
         self.stack.addWidget(self.pdf_tab)
         self.stack.addWidget(self.mover_tab)
         self.stack.addWidget(self.export_tab)
+        self.stack.addWidget(self.logic_tab)
         right_layout.addWidget(self.stack, 1)
 
         shell.addWidget(right_panel, 1)
@@ -199,14 +221,24 @@ class MainWindow(QMainWindow):
     def _update_nav_labels(self) -> None:
         t = self.i18n.t
         if self._rail_collapsed:
-            short_labels = ["01", "02", "03"]
-            tooltips = [t("nav_pdf_sign"), t("nav_file_mover"), t("nav_list_export")]
+            short_labels = ["01", "02", "03", "04"]
+            tooltips = [
+                t("nav_pdf_sign"),
+                t("nav_file_mover"),
+                t("nav_list_export"),
+                t("nav_logic_mapper"),
+            ]
             for btn, short, tip in zip(self.nav_buttons, short_labels, tooltips):
                 btn.setText(short)
                 btn.setToolTip(tip)
             self.watermark_stamp.setText("开能能")
         else:
-            full_labels = [t("nav_pdf_sign"), t("nav_file_mover"), t("nav_list_export")]
+            full_labels = [
+                t("nav_pdf_sign"),
+                t("nav_file_mover"),
+                t("nav_list_export"),
+                t("nav_logic_mapper"),
+            ]
             for btn, label in zip(self.nav_buttons, full_labels):
                 btn.setText(label.replace("&", "&&"))
                 btn.setToolTip(label)
@@ -219,7 +251,12 @@ class MainWindow(QMainWindow):
     def _update_active_module_label(self) -> None:
         t = self.i18n.t
         idx = self.stack.currentIndex()
-        titles = [t("nav_pdf_sign"), t("nav_file_mover"), t("nav_list_export")]
+        titles = [
+            t("nav_pdf_sign"),
+            t("nav_file_mover"),
+            t("nav_list_export"),
+            t("nav_logic_mapper"),
+        ]
         self.active_module_lbl.setText(titles[idx])
 
     def _set_language(self, lang_code: str) -> None:
@@ -239,6 +276,7 @@ class MainWindow(QMainWindow):
         is_dark = mode == "dark"
         self.pdf_tab.set_dark_mode(is_dark)
         self.mover_tab.set_dark_mode(is_dark)
+        self.logic_tab.set_dark_mode(is_dark)
 
     def _update_theme_button_label(self) -> None:
         key = "theme_light" if self._theme_mode == "dark" else "theme_dark"
@@ -254,7 +292,58 @@ class MainWindow(QMainWindow):
         self._update_nav_labels()
         self._update_active_module_label()
         self._update_theme_button_label()
+        self._update_check_button_label()
 
         self.pdf_tab.retranslate_ui()
         self.mover_tab.retranslate_ui()
         self.export_tab.retranslate_ui()
+        self.logic_tab.retranslate_ui()
+
+    def _update_check_button_label(self) -> None:
+        checking = self._update_worker is not None and self._update_worker.isRunning()
+        key = "btn_checking_update" if checking else "btn_check_update"
+        self.update_btn.setText(self.i18n.t(key))
+        self.update_btn.setEnabled(not checking)
+
+    def _check_updates(self, manual: bool = False) -> None:
+        if self._update_worker is not None and self._update_worker.isRunning():
+            return
+        self._manual_update_check = manual
+        self._update_worker = UpdateCheckWorker()
+        self._update_worker.result_ready.connect(self._on_update_check_result)
+        self._update_worker.no_release.connect(self._on_update_no_release)
+        self._update_worker.failed.connect(self._on_update_check_failed)
+        self._update_worker.finished.connect(self._update_check_button_label)
+        self._update_worker.start()
+        self._update_check_button_label()
+
+    def _on_update_check_result(self, release: ReleaseInfo) -> None:
+        if release.has_update:
+            dlg = UpdateDialog(self.i18n, release, self)
+            dlg.exec()
+            return
+        if self._manual_update_check:
+            t = self.i18n.t
+            QMessageBox.information(
+                self,
+                t("msg_info"),
+                t("update_up_to_date", version=APP_VERSION),
+            )
+
+    def _on_update_no_release(self) -> None:
+        if self._manual_update_check:
+            t = self.i18n.t
+            QMessageBox.information(
+                self,
+                t("msg_info"),
+                t("update_no_release_yet", version=APP_VERSION),
+            )
+
+    def _on_update_check_failed(self, error_msg: str) -> None:
+        if self._manual_update_check:
+            t = self.i18n.t
+            QMessageBox.warning(
+                self,
+                t("msg_warning"),
+                t("update_check_failed", error=error_msg),
+            )

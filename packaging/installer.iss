@@ -1,7 +1,7 @@
 ﻿; Inno Setup Script for PDF整理工具 (by 开能能)
 
 #define MyAppName "PDF整理工具"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "by 开能能"
 #define MyAppExeName "PDF整理工具.exe"
 
@@ -23,6 +23,8 @@ UninstallDisplayName={#MyAppName}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=force
+RestartApplications=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 

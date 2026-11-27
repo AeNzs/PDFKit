@@ -292,7 +292,7 @@ def build_stylesheet(mode: str = "light") -> str:
         border-color: {p['border']};
     }}
 
-    QLineEdit, QComboBox {{
+    QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
         background-color: {p['surface']};
         color: {p['text']};
         border: 1px solid {p['border_strong']};
@@ -301,8 +301,33 @@ def build_stylesheet(mode: str = "light") -> str:
         min-height: 18px;
     }}
 
-    QLineEdit:focus, QComboBox:focus {{
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
         border: 2px solid {p['accent']};
+    }}
+
+    QListWidget {{
+        background-color: {p['surface']};
+        color: {p['text']};
+        border: 1px solid {p['border']};
+        border-radius: 5px;
+        padding: 4px;
+    }}
+
+    QListWidget::item {{
+        padding: 6px 8px;
+        border-radius: 4px;
+    }}
+
+    QListWidget::item:selected {{
+        background-color: {p['table_select']};
+        color: {p['table_select_text']};
+        font-weight: 600;
+    }}
+
+    QScrollArea {{
+        background-color: {p['canvas']};
+        border: 1px solid {p['border']};
+        border-radius: 5px;
     }}
 
     QLineEdit[mono="true"] {{

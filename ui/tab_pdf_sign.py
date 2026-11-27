@@ -37,6 +37,7 @@ from core.pdf_sign import (
     run_split_and_sign,
     save_rules,
 )
+from ui.preview_dialog import SignaturePreviewDialog
 from ui.widgets import PathPickerRow, WatermarkTableWidget, WorkerThread
 
 
@@ -224,11 +225,21 @@ class PdfSignTab(QWidget):
         self.save_btn = QPushButton()
         self.load_btn = QPushButton()
         self.reset_btn = QPushButton()
+        self.preview_sign_btn = QPushButton()
 
-        for btn in (self.add_btn, self.edit_btn, self.del_btn, self.save_btn, self.load_btn, self.reset_btn):
+        for btn in (
+            self.preview_sign_btn,
+            self.add_btn,
+            self.edit_btn,
+            self.del_btn,
+            self.save_btn,
+            self.load_btn,
+            self.reset_btn,
+        ):
             btn.setCursor(Qt.PointingHandCursor)
             rules_bar.addWidget(btn)
 
+        self.preview_sign_btn.clicked.connect(self._open_preview)
         self.add_btn.clicked.connect(self._add_rule)
         self.edit_btn.clicked.connect(self._edit_rule)
         self.del_btn.clicked.connect(self._delete_rule)
@@ -314,6 +325,7 @@ class PdfSignTab(QWidget):
 
         self.rules_title_lbl.setText(t("rules_title"))
         self.empty_rules_lbl.setText(t("rules_empty"))
+        self.preview_sign_btn.setText(t("btn_preview_sign"))
         self.add_btn.setText(t("btn_add_rule"))
         self.edit_btn.setText(t("btn_edit_rule"))
         self.del_btn.setText(t("btn_delete_rule"))
@@ -395,6 +407,31 @@ class PdfSignTab(QWidget):
     def _selected_row(self) -> Optional[int]:
         row = self.table.currentRow()
         return row if 0 <= row < len(self.rules) else None
+
+    def _open_preview(self) -> None:
+        t = self.i18n.t
+        pdf_path = self.pdf_picker.path()
+        if not pdf_path or not os.path.isfile(pdf_path):
+            self._set_status(t("preview_err_no_pdf"), "error")
+            QMessageBox.warning(self, t("msg_warning"), t("preview_err_no_pdf"))
+            return
+
+        try:
+            dlg = SignaturePreviewDialog(
+                i18n=self.i18n,
+                pdf_path=pdf_path,
+                rules=self.rules,
+                signature_dir=self.sig_picker.path(),
+                parent=self,
+            )
+        except Exception as exc:
+            self._set_status(f"{t('state_error')} {exc}", "error")
+            QMessageBox.critical(self, t("msg_error"), str(exc))
+            return
+
+        if dlg.exec() == QDialog.Accepted:
+            self.rules = dlg.edited_rules
+            self._refresh_rules()
 
     def _add_rule(self) -> None:
         new_rule: Dict[str, Any] = {
@@ -479,6 +516,7 @@ class PdfSignTab(QWidget):
     def _set_running(self, running: bool) -> None:
         for widget in (
             self.run_btn,
+            self.preview_sign_btn,
             self.add_btn,
             self.edit_btn,
             self.del_btn,
