@@ -1,4 +1,4 @@
-# PDF整理工具 (by 开能能)
+# PDF整理工具
 
 Desktop utility built with **PySide6** combining 5 daily PDF & Excel file workflows into one multilingual Windows interface (**Bahasa Indonesia**, **简体中文**, **English**) with Light/Dark theme support.
 
