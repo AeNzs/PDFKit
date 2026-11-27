@@ -1,7 +1,7 @@
 ﻿; Inno Setup Script for PDF整理工具 (by 开能能)
 
 #define MyAppName "PDF整理工具"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "by 开能能"
 #define MyAppExeName "PDF整理工具.exe"
 

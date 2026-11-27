@@ -20,6 +20,8 @@ if not exist ".venv\Scripts\pyinstaller.exe" (
   --icon "assets\applogo.ico" ^
   --add-data "assets\applogo.png;assets" ^
   --add-data "assets\applogo.ico;assets" ^
+  --collect-data certifi ^
+  --hidden-import truststore ^
   --exclude-module tkinter ^
   --exclude-module onnxruntime ^
   --exclude-module numpy ^
