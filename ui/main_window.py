@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Dict, Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -169,6 +169,11 @@ class MainWindow(QMainWindow):
         self.lang_group = QButtonGroup(self)
         self.lang_group.setExclusive(True)
         self.lang_buttons: Dict[str, QPushButton] = {}
+        seg_box = QFrame()
+        seg_box.setObjectName("SegmentedBox")
+        seg_layout = QHBoxLayout(seg_box)
+        seg_layout.setContentsMargins(3, 3, 3, 3)
+        seg_layout.setSpacing(2)
         for code in SUPPORTED_LANGUAGES:
             btn = QPushButton(LANGUAGE_LABELS[code])
             btn.setObjectName("LangButton")
@@ -179,7 +184,8 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(lambda _checked, c=code: self._set_language(c))
             self.lang_group.addButton(btn)
             self.lang_buttons[code] = btn
-            top_layout.addWidget(btn)
+            seg_layout.addWidget(btn)
+        top_layout.addWidget(seg_box)
 
         self.theme_btn = QPushButton()
         self.theme_btn.setCursor(Qt.PointingHandCursor)
@@ -210,7 +216,22 @@ class MainWindow(QMainWindow):
 
     def _toggle_rail(self) -> None:
         self._rail_collapsed = not self._rail_collapsed
-        self.sidebar.setFixedWidth(74 if self._rail_collapsed else 228)
+        target_w = 74 if self._rail_collapsed else 228
+        self._rail_anim_min = QPropertyAnimation(self.sidebar, b"minimumWidth")
+        self._rail_anim_min.setDuration(150)
+        self._rail_anim_min.setStartValue(self.sidebar.width())
+        self._rail_anim_min.setEndValue(target_w)
+        self._rail_anim_min.setEasingCurve(QEasingCurve.OutCubic)
+
+        self._rail_anim_max = QPropertyAnimation(self.sidebar, b"maximumWidth")
+        self._rail_anim_max.setDuration(150)
+        self._rail_anim_max.setStartValue(self.sidebar.width())
+        self._rail_anim_max.setEndValue(target_w)
+        self._rail_anim_max.setEasingCurve(QEasingCurve.OutCubic)
+
+        self._rail_anim_min.start()
+        self._rail_anim_max.start()
+
         self.brand_logo.setVisible(not self._rail_collapsed and not self.brand_logo.pixmap().isNull())
         self.brand_title.setVisible(not self._rail_collapsed)
         self.brand_sub.setVisible(not self._rail_collapsed)

@@ -177,7 +177,7 @@ class PdfSignTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 16)
+        root.setContentsMargins(22, 18, 22, 16)
         root.setSpacing(12)
 
         # Header
@@ -193,9 +193,9 @@ class PdfSignTab(QWidget):
         file_card = QFrame()
         file_card.setObjectName("Card")
         grid = QGridLayout(file_card)
-        grid.setContentsMargins(14, 12, 14, 12)
+        grid.setContentsMargins(16, 14, 16, 14)
         grid.setHorizontalSpacing(18)
-        grid.setVerticalSpacing(8)
+        grid.setVerticalSpacing(10)
 
         self.pdf_picker = PathPickerRow(
             "", mode="file", file_filter="PDF Files (*.pdf)", extensions=(".pdf",)
@@ -212,8 +212,15 @@ class PdfSignTab(QWidget):
         grid.addWidget(self.sig_picker, 1, 1)
         root.addWidget(file_card)
 
-        # Rules header + action strip
+        # Rules card (toolbar + DataGrid table cleanly grouped)
+        rules_card = QFrame()
+        rules_card.setObjectName("Card")
+        rules_card_layout = QVBoxLayout(rules_card)
+        rules_card_layout.setContentsMargins(16, 12, 16, 14)
+        rules_card_layout.setSpacing(10)
+
         rules_bar = QHBoxLayout()
+        rules_bar.setSpacing(6)
         self.rules_title_lbl = QLabel()
         self.rules_title_lbl.setObjectName("SectionTitle")
         rules_bar.addWidget(self.rules_title_lbl)
@@ -226,6 +233,7 @@ class PdfSignTab(QWidget):
         self.load_btn = QPushButton()
         self.reset_btn = QPushButton()
         self.preview_sign_btn = QPushButton()
+        self.preview_sign_btn.setObjectName("TintedButton")
 
         for btn in (
             self.preview_sign_btn,
@@ -246,7 +254,7 @@ class PdfSignTab(QWidget):
         self.save_btn.clicked.connect(self._save_rules)
         self.load_btn.clicked.connect(self._load_rules)
         self.reset_btn.clicked.connect(self._reset_rules)
-        root.addLayout(rules_bar)
+        rules_card_layout.addLayout(rules_bar)
 
         # Rules table with watermark
         self.table = WatermarkTableWidget(0, 9)
@@ -257,14 +265,15 @@ class PdfSignTab(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setMinimumHeight(180)
+        self.table.setMinimumHeight(170)
         self.table.cellDoubleClicked.connect(lambda _r, _c: self._edit_rule())
-        root.addWidget(self.table, 3)
+        rules_card_layout.addWidget(self.table, 1)
 
         self.empty_rules_lbl = QLabel()
         self.empty_rules_lbl.setObjectName("EmptyHint")
         self.empty_rules_lbl.setAlignment(Qt.AlignCenter)
-        root.addWidget(self.empty_rules_lbl)
+        rules_card_layout.addWidget(self.empty_rules_lbl)
+        root.addWidget(rules_card, 3)
 
         # Action & progress bar
         run_bar = QHBoxLayout()

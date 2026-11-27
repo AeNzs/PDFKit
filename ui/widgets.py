@@ -148,12 +148,15 @@ class PathPickerRow(QWidget):
 
 
 class WatermarkTableWidget(QTableWidget):
-    """QTableWidget with a subtle 'by 开能能' watermark painted onto the viewport."""
+    """Fluent-styled QTableWidget with a subtle 'by 开能能' watermark painted onto the viewport."""
 
     def __init__(self, rows: int = 0, columns: int = 0, parent: Optional[QWidget] = None) -> None:
         super().__init__(rows, columns, parent)
         self._watermark_text = WATERMARK_TEXT
         self._dark_mode = False
+        self.setShowGrid(False)
+        self.verticalHeader().setDefaultSectionSize(34)
+        self.horizontalHeader().setHighlightSections(False)
 
     def set_dark_mode(self, dark: bool) -> None:
         self._dark_mode = dark

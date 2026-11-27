@@ -39,7 +39,7 @@ class ListExporterTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 16)
+        root.setContentsMargins(22, 18, 22, 16)
         root.setSpacing(12)
 
         self.title_lbl = QLabel()
@@ -52,12 +52,12 @@ class ListExporterTab(QWidget):
 
         # Split layout: controls on left, live preview tabs on right
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(8)
+        splitter.setHandleWidth(12)
 
         left_card = QFrame()
         left_card.setObjectName("Card")
         left_layout = QVBoxLayout(left_card)
-        left_layout.setContentsMargins(16, 16, 16, 16)
+        left_layout.setContentsMargins(18, 18, 18, 18)
         left_layout.setSpacing(14)
 
         self.folder_picker = PathPickerRow("", mode="dir")

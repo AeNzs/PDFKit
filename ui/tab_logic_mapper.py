@@ -1,4 +1,4 @@
-"""Tab 4: Mapping by Logic (Dual-mode: Create Folders from Raw Files OR Scan Existing Folders)."""
+"""Tab 4: Mapping by Logic (Dual-mode + Alias Table with Bulk Upload & Mockup Download)."""
 
 from __future__ import annotations
 
@@ -36,7 +36,9 @@ from core.logic_mapper import (
     LogicMatchEntry,
     build_create_from_files_preview,
     build_logic_preview,
+    bulk_import_aliases_from_excel,
     clone_default_config,
+    create_alias_mockup,
     execute_logic_mapping,
     load_logic_config,
     save_logic_config,
@@ -52,12 +54,12 @@ class AliasRuleDialog(QDialog):
         self.i18n = i18n
         self.alias = alias
         self.setModal(True)
-        self.setFixedWidth(480)
+        self.setFixedWidth(460)
         self.setWindowTitle(self.i18n.t("logic_alias_dlg_title"))
 
         t = self.i18n.t
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
         form = QFormLayout()
@@ -76,10 +78,6 @@ class AliasRuleDialog(QDialog):
         self.pt_edit = QLineEdit(str(alias.get("pt_name", "")))
         self.pt_edit.setPlaceholderText("TEK")
         form.addRow(t("logic_alias_dlg_pt"), self.pt_edit)
-
-        self.month_edit = QLineEdit(str(alias.get("month_override", "")))
-        self.month_edit.setPlaceholderText("{BULAN}中国船")
-        form.addRow(t("logic_alias_dlg_month"), self.month_edit)
 
         layout.addLayout(form)
 
@@ -116,7 +114,6 @@ class AliasRuleDialog(QDialog):
         self.alias["enabled"] = self.enabled_chk.isChecked()
         self.alias["match_code"] = code
         self.alias["pt_name"] = pt
-        self.alias["month_override"] = self.month_edit.text().strip()
         self.accept()
 
 
@@ -133,7 +130,7 @@ class SourceRuleDialog(QDialog):
 
         t = self.i18n.t
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
         form = QFormLayout()
@@ -268,7 +265,7 @@ class LogicMapperTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 14)
+        root.setContentsMargins(22, 16, 22, 14)
         root.setSpacing(10)
 
         self.title_lbl = QLabel()
@@ -283,8 +280,8 @@ class LogicMapperTab(QWidget):
         top_card = QFrame()
         top_card.setObjectName("Card")
         top_layout = QVBoxLayout(top_card)
-        top_layout.setContentsMargins(14, 10, 14, 10)
-        top_layout.setSpacing(8)
+        top_layout.setContentsMargins(16, 12, 16, 12)
+        top_layout.setSpacing(9)
 
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
@@ -300,11 +297,11 @@ class LogicMapperTab(QWidget):
         self.root_picker = PathPickerRow("", mode="dir")
         top_layout.addWidget(self.root_picker)
 
-        # Mode 1 controls: Month + Folder Template + Fallback Regex + Ignore
+        # Mode 1 controls
         self.create_opts_widget = QWidget()
         co_layout = QVBoxLayout(self.create_opts_widget)
         co_layout.setContentsMargins(0, 0, 0, 0)
-        co_layout.setSpacing(6)
+        co_layout.setSpacing(8)
 
         row_a = QHBoxLayout()
         row_a.setSpacing(8)
@@ -312,7 +309,7 @@ class LogicMapperTab(QWidget):
         self.month_lbl.setObjectName("FieldLabel")
         self.month_lbl.setFixedWidth(130)
         self.month_edit = QLineEdit(self.month_label)
-        self.month_edit.setFixedWidth(130)
+        self.month_edit.setFixedWidth(140)
 
         self.tpl_lbl = QLabel()
         self.tpl_lbl.setObjectName("FieldLabel")
@@ -347,7 +344,7 @@ class LogicMapperTab(QWidget):
         co_layout.addLayout(row_b)
         top_layout.addWidget(self.create_opts_widget)
 
-        # Mode 2 controls: Reference Regex + Extract From
+        # Mode 2 controls
         self.existing_opts_widget = QWidget()
         eo_row = QHBoxLayout(self.existing_opts_widget)
         eo_row.setContentsMargins(0, 0, 0, 0)
@@ -375,15 +372,15 @@ class LogicMapperTab(QWidget):
 
         # Vertical splitter: Config tabs (Sources + Aliases) on top, Preview + Log below
         splitter = QSplitter(Qt.Vertical)
-        splitter.setHandleWidth(8)
+        splitter.setHandleWidth(10)
 
         self.cfg_tabs = QTabWidget()
 
         # --- Sub-tab 1: Source Folder Paths ---
         src_tab = QWidget()
         src_layout = QVBoxLayout(src_tab)
-        src_layout.setContentsMargins(10, 8, 10, 8)
-        src_layout.setSpacing(6)
+        src_layout.setContentsMargins(12, 10, 12, 10)
+        src_layout.setSpacing(8)
 
         src_bar = QHBoxLayout()
         self.sources_title_lbl = QLabel()
@@ -434,11 +431,11 @@ class LogicMapperTab(QWidget):
         self.empty_rules_lbl.setAlignment(Qt.AlignCenter)
         src_layout.addWidget(self.empty_rules_lbl)
 
-        # --- Sub-tab 2: Code -> Company Alias Table ---
+        # --- Sub-tab 2: Code -> Company Alias Table (3 clean columns + Bulk Upload + Mockup) ---
         alias_tab = QWidget()
         alias_layout = QVBoxLayout(alias_tab)
-        alias_layout.setContentsMargins(10, 8, 10, 8)
-        alias_layout.setSpacing(6)
+        alias_layout.setContentsMargins(12, 10, 12, 10)
+        alias_layout.setSpacing(8)
 
         alias_bar = QHBoxLayout()
         self.aliases_title_lbl = QLabel()
@@ -446,21 +443,34 @@ class LogicMapperTab(QWidget):
         alias_bar.addWidget(self.aliases_title_lbl)
         alias_bar.addStretch(1)
 
+        self.bulk_upload_btn = QPushButton()
+        self.bulk_upload_btn.setObjectName("TintedButton")
+        self.alias_mockup_btn = QPushButton()
         self.add_alias_btn = QPushButton()
         self.edit_alias_btn = QPushButton()
         self.del_alias_btn = QPushButton()
         self.save_alias_btn = QPushButton()
-        for btn in (self.add_alias_btn, self.edit_alias_btn, self.del_alias_btn, self.save_alias_btn):
+
+        for btn in (
+            self.bulk_upload_btn,
+            self.alias_mockup_btn,
+            self.add_alias_btn,
+            self.edit_alias_btn,
+            self.del_alias_btn,
+            self.save_alias_btn,
+        ):
             btn.setCursor(Qt.PointingHandCursor)
             alias_bar.addWidget(btn)
 
+        self.bulk_upload_btn.clicked.connect(self._bulk_upload_aliases)
+        self.alias_mockup_btn.clicked.connect(self._download_alias_mockup)
         self.add_alias_btn.clicked.connect(self._add_alias)
         self.edit_alias_btn.clicked.connect(self._edit_alias)
         self.del_alias_btn.clicked.connect(self._delete_alias)
         self.save_alias_btn.clicked.connect(self._save_config)
         alias_layout.addLayout(alias_bar)
 
-        self.alias_table = WatermarkTableWidget(0, 4)
+        self.alias_table = WatermarkTableWidget(0, 3)
         self.alias_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.alias_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.alias_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -485,7 +495,7 @@ class LogicMapperTab(QWidget):
         prev_pane = QWidget()
         prev_layout = QVBoxLayout(prev_pane)
         prev_layout.setContentsMargins(0, 4, 0, 0)
-        prev_layout.setSpacing(7)
+        prev_layout.setSpacing(8)
 
         action_bar = QHBoxLayout()
         action_bar.setSpacing(8)
@@ -530,11 +540,11 @@ class LogicMapperTab(QWidget):
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.preview_table.horizontalHeader().setStretchLastSection(True)
-        self.preview_table.setMinimumHeight(120)
+        self.preview_table.setMinimumHeight(82)
         prev_layout.addWidget(self.preview_table, 2)
 
         self.empty_prev_lbl = QLabel()
-        self.empty_prev_lbl.setObjectName("EmptyHint")
+        self.empty_prev_lbl.setObjectName("PageDesc")
         self.empty_prev_lbl.setAlignment(Qt.AlignCenter)
         self.empty_prev_lbl.setWordWrap(True)
         prev_layout.addWidget(self.empty_prev_lbl)
@@ -561,7 +571,8 @@ class LogicMapperTab(QWidget):
 
         self.log_box = QPlainTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(85)
+        self.log_box.setMinimumHeight(46)
+        self.log_box.setMaximumHeight(74)
         prev_layout.addWidget(self.log_box, 1)
 
         splitter.addWidget(prev_pane)
@@ -573,7 +584,7 @@ class LogicMapperTab(QWidget):
         box = QFrame()
         box.setObjectName("StatCard")
         v = QVBoxLayout(box)
-        v.setContentsMargins(10, 6, 10, 6)
+        v.setContentsMargins(12, 8, 12, 8)
         v.setSpacing(2)
         val_lbl = QLabel("0")
         val_lbl.setObjectName("StatValue")
@@ -655,11 +666,13 @@ class LogicMapperTab(QWidget):
                 t("logic_col_conflict"),
             ]
         )
-        for idx, w in enumerate([58, 155, 290, 95, 95, 110, 74, 82]):
+        for idx, w in enumerate([60, 155, 290, 98, 98, 110, 76, 84]):
             self.rules_table.setColumnWidth(idx, w)
 
         self.aliases_title_lbl.setText(t("logic_aliases_title"))
         self.empty_aliases_lbl.setText(t("logic_aliases_empty"))
+        self.bulk_upload_btn.setText(t("logic_btn_bulk_upload"))
+        self.alias_mockup_btn.setText(t("btn_download_mockup"))
         self.add_alias_btn.setText(t("logic_btn_add_alias"))
         self.edit_alias_btn.setText(t("btn_edit_rule"))
         self.del_alias_btn.setText(t("btn_delete_rule"))
@@ -670,10 +683,9 @@ class LogicMapperTab(QWidget):
                 t("col_enabled"),
                 t("logic_col_match_code"),
                 t("logic_col_pt_name"),
-                t("logic_col_month_ovr"),
             ]
         )
-        for idx, w in enumerate([64, 220, 150]):
+        for idx, w in enumerate([74, 300]):
             self.alias_table.setColumnWidth(idx, w)
 
         self.prev_title_lbl.setText(t("logic_prev_title"))
@@ -769,7 +781,6 @@ class LogicMapperTab(QWidget):
                 enabled_txt,
                 str(alias.get("match_code", "")),
                 str(alias.get("pt_name", "")),
-                str(alias.get("month_override", "")) or "-",
             ]
             for col_idx, val in enumerate(vals):
                 item = QTableWidgetItem(val)
@@ -820,18 +831,81 @@ class LogicMapperTab(QWidget):
         del self.rules[row]
         self._refresh_rules_table()
 
+    def _bulk_upload_aliases(self) -> None:
+        t = self.i18n.t
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            t("dlg_pick_excel"),
+            self.root_picker.path() or "",
+            "Excel Files (*.xlsx *.xlsm)",
+        )
+        if not path:
+            return
+        try:
+            merged, stats = bulk_import_aliases_from_excel(path, self.aliases)
+            self.aliases = merged
+            self._refresh_alias_table()
+            save_logic_config(self._current_config(), DEFAULT_LOGIC_CONFIG_PATH)
+            self._set_status(t("state_done"), "done")
+            QMessageBox.information(
+                self,
+                t("msg_info"),
+                t(
+                    "logic_msg_bulk_done",
+                    added=stats["added"],
+                    updated=stats["updated"],
+                    skipped=stats["skipped"],
+                    total=stats["total"],
+                ),
+            )
+        except Exception as exc:
+            self._set_status(f"{t('state_error')} {exc}", "error")
+            QMessageBox.critical(self, t("msg_error"), str(exc))
+
+    def _download_alias_mockup(self) -> None:
+        t = self.i18n.t
+        start_dir = self.root_picker.path() or os.path.expanduser("~\\Desktop")
+        default_file = os.path.join(start_dir, "alias_rules_mockup.xlsx")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            t("dlg_save_mockup"),
+            default_file,
+            "Excel Files (*.xlsx)",
+        )
+        if not save_path:
+            return
+        if not save_path.lower().endswith(".xlsx"):
+            save_path += ".xlsx"
+        try:
+            created = create_alias_mockup(save_path)
+            self._set_status(t("state_done"), "done")
+            QMessageBox.information(self, t("msg_info"), t("msg_mockup_saved", path=created))
+        except Exception as exc:
+            self._set_status(f"{t('state_error')} {exc}", "error")
+            QMessageBox.critical(self, t("msg_error"), str(exc))
+
     def _add_alias(self) -> None:
         new_alias: Dict[str, Any] = {
             "enabled": True,
             "match_code": "",
             "pt_name": "",
-            "month_override": "",
         }
         dlg = AliasRuleDialog(self.i18n, new_alias, self)
         if dlg.exec() == QDialog.Accepted:
-            self.aliases.append(new_alias)
-            self._refresh_alias_table()
-            self.alias_table.selectRow(len(self.aliases) - 1)
+            # Rewrite if same match_code already exists
+            norm = new_alias["match_code"].lower()
+            replaced = False
+            for idx, existing in enumerate(self.aliases):
+                if str(existing.get("match_code", "")).strip().lower() == norm:
+                    self.aliases[idx] = new_alias
+                    self._refresh_alias_table()
+                    self.alias_table.selectRow(idx)
+                    replaced = True
+                    break
+            if not replaced:
+                self.aliases.append(new_alias)
+                self._refresh_alias_table()
+                self.alias_table.selectRow(len(self.aliases) - 1)
 
     def _edit_alias(self) -> None:
         row = self._selected_alias_row()
@@ -1031,6 +1105,8 @@ class LogicMapperTab(QWidget):
             self.add_src_btn,
             self.edit_src_btn,
             self.del_src_btn,
+            self.bulk_upload_btn,
+            self.alias_mockup_btn,
             self.add_alias_btn,
             self.edit_alias_btn,
             self.del_alias_btn,

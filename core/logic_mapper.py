@@ -1,4 +1,4 @@
-"""Module 04 engine: Mapping by Logic (Alias Table + Regex + Multi-source Copy/Move)."""
+"""Module 04 engine: Mapping by Logic (Alias Table + Bulk Excel Import + Regex + Multi-source)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ import shutil
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 
 from core.pdf_sign import get_app_dir, safe_filename
 
@@ -35,16 +38,16 @@ DEFAULT_TARGET_REGEX = r"PJI-([A-Za-z0-9]+)-"
 DEFAULT_TARGET_SCAN = "folder"  # "folder" | "files" | "both"
 
 DEFAULT_ALIAS_RULES: List[Dict[str, Any]] = [
-    {"enabled": True, "match_code": "AMI", "pt_name": "AMI", "month_override": ""},
-    {"enabled": True, "match_code": "ANI", "pt_name": "ANI", "month_override": ""},
-    {"enabled": True, "match_code": "BMSI", "pt_name": "BMSI", "month_override": ""},
-    {"enabled": True, "match_code": "BSE", "pt_name": "BSE", "month_override": ""},
-    {"enabled": True, "match_code": "CMI", "pt_name": "CMI", "month_override": ""},
-    {"enabled": True, "match_code": "PII", "pt_name": "PII", "month_override": ""},
-    {"enabled": True, "match_code": "PJI-MXZ-26001", "pt_name": "TEK", "month_override": "{BULAN}中国船"},
-    {"enabled": True, "match_code": "PJI-MXZ-26002", "pt_name": "XGIM", "month_override": "{BULAN}中国船"},
-    {"enabled": True, "match_code": "PJI-MXZ-26207", "pt_name": "IPM", "month_override": "{BULAN}中国船"},
-    {"enabled": True, "match_code": "PJI-MXZ-26320", "pt_name": "PAI", "month_override": "{BULAN}中国船"},
+    {"enabled": True, "match_code": "AMI", "pt_name": "AMI"},
+    {"enabled": True, "match_code": "ANI", "pt_name": "ANI"},
+    {"enabled": True, "match_code": "BMSI", "pt_name": "BMSI"},
+    {"enabled": True, "match_code": "BSE", "pt_name": "BSE"},
+    {"enabled": True, "match_code": "CMI", "pt_name": "CMI"},
+    {"enabled": True, "match_code": "PII", "pt_name": "PII"},
+    {"enabled": True, "match_code": "PJI-MXZ-26001", "pt_name": "TEK"},
+    {"enabled": True, "match_code": "PJI-MXZ-26002", "pt_name": "XGIM"},
+    {"enabled": True, "match_code": "PJI-MXZ-26207", "pt_name": "IPM"},
+    {"enabled": True, "match_code": "PJI-MXZ-26320", "pt_name": "PAI"},
 ]
 
 DEFAULT_SOURCE_RULES: List[Dict[str, Any]] = [
@@ -87,6 +90,24 @@ class LogicMatchEntry:
     error_message: str = ""
 
 
+def _sanitize_alias_list(raw_aliases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    cleaned: List[Dict[str, Any]] = []
+    for item in raw_aliases:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("match_code", "")).strip()
+        pt = str(item.get("pt_name", "")).strip()
+        if code and pt:
+            cleaned.append(
+                {
+                    "enabled": bool(item.get("enabled", True)),
+                    "match_code": code,
+                    "pt_name": pt,
+                }
+            )
+    return cleaned
+
+
 def clone_default_config() -> Dict[str, Any]:
     return {
         "work_mode": DEFAULT_WORK_MODE,
@@ -105,8 +126,10 @@ def save_logic_config(config: Dict[str, Any], path: str = DEFAULT_LOGIC_CONFIG_P
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
+    to_save = dict(config)
+    to_save["aliases"] = _sanitize_alias_list(config.get("aliases") or [])
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4, ensure_ascii=False)
+        json.dump(to_save, f, indent=4, ensure_ascii=False)
     return path
 
 
@@ -123,6 +146,12 @@ def load_logic_config(path: str = DEFAULT_LOGIC_CONFIG_PATH) -> Dict[str, Any]:
                     data = json.load(f)
                 if isinstance(data, dict) and isinstance(data.get("rules"), list):
                     defaults = clone_default_config()
+                    raw_aliases = data.get("aliases")
+                    aliases = (
+                        _sanitize_alias_list(raw_aliases)
+                        if isinstance(raw_aliases, list)
+                        else defaults["aliases"]
+                    )
                     return {
                         "work_mode": str(data.get("work_mode") or defaults["work_mode"]),
                         "month_label": str(data.get("month_label") or defaults["month_label"]),
@@ -139,7 +168,7 @@ def load_logic_config(path: str = DEFAULT_LOGIC_CONFIG_PATH) -> Dict[str, Any]:
                         ),
                         "target_regex": str(data.get("target_regex") or defaults["target_regex"]),
                         "target_scan": str(data.get("target_scan") or defaults["target_scan"]),
-                        "aliases": data["aliases"] if isinstance(data.get("aliases"), list) else defaults["aliases"],
+                        "aliases": aliases,
                         "rules": data["rules"],
                     }
             except Exception:
@@ -147,8 +176,119 @@ def load_logic_config(path: str = DEFAULT_LOGIC_CONFIG_PATH) -> Dict[str, Any]:
     return clone_default_config()
 
 
-def _is_ascii_alnum_only(text: str) -> bool:
-    return bool(text) and all(c.isascii() and c.isalnum() for c in text)
+def _parse_enabled_cell(val: Any) -> bool:
+    if val is None or str(val).strip() == "":
+        return True
+    s = str(val).strip().lower()
+    return s not in ("false", "0", "no", "tidak", "否", "n", "off")
+
+
+def bulk_import_aliases_from_excel(
+    excel_path: str,
+    existing_aliases: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """
+    Bulk import alias rules from Excel (Row 2+: Col A = match_code, Col B = pt_name, Col C = enabled optional).
+    Duplicate match_code (case-insensitive) overwrites the existing entry in place.
+    """
+    wb = load_workbook(excel_path, data_only=True)
+    try:
+        ws = wb.worksheets[0]
+        merged: List[Dict[str, Any]] = [dict(a) for a in _sanitize_alias_list(existing_aliases)]
+        index_by_code: Dict[str, int] = {
+            a["match_code"].lower(): i for i, a in enumerate(merged)
+        }
+
+        added = 0
+        updated = 0
+        skipped = 0
+
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            raw_code = row[0] if len(row) > 0 else None
+            raw_pt = row[1] if len(row) > 1 else None
+            raw_enabled = row[2] if len(row) > 2 else None
+
+            if raw_code is None and raw_pt is None:
+                continue
+
+            code = "" if raw_code is None else str(raw_code).strip()
+            pt = "" if raw_pt is None else str(raw_pt).strip()
+            if not code or not pt:
+                skipped += 1
+                continue
+
+            enabled = _parse_enabled_cell(raw_enabled)
+            norm_key = code.lower()
+
+            if norm_key in index_by_code:
+                idx = index_by_code[norm_key]
+                merged[idx] = {
+                    "enabled": enabled,
+                    "match_code": code,
+                    "pt_name": pt,
+                }
+                updated += 1
+            else:
+                index_by_code[norm_key] = len(merged)
+                merged.append(
+                    {
+                        "enabled": enabled,
+                        "match_code": code,
+                        "pt_name": pt,
+                    }
+                )
+                added += 1
+
+        return merged, {
+            "added": added,
+            "updated": updated,
+            "skipped": skipped,
+            "total": len(merged),
+        }
+    finally:
+        wb.close()
+
+
+def create_alias_mockup(output_path: str) -> str:
+    """Generate a ready-to-fill Excel template for bulk uploading Code -> PT alias rules."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "alias_rules"
+
+    headers = ["Kode di Nama File", "Nama PT", "Aktif (Ya/Tidak)"]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="0F6CBD", end_color="0F6CBD", fill_type="solid")
+    header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    for col_idx in range(1, 4):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    sample_rows = [
+        ["AMI", "AMI", "Ya"],
+        ["ANI", "ANI", "Ya"],
+        ["BMSI", "BMSI", "Ya"],
+        ["PJI-MXZ-26001", "TEK", "Ya"],
+        ["PJI-MXZ-26002", "XGIM", "Ya"],
+        ["PJI-MXZ-26207", "IPM", "Ya"],
+        ["PJI-MXZ-26320", "PAI", "Ya"],
+    ]
+    body_font = Font(name="Segoe UI", size=10)
+    for row_data in sample_rows:
+        ws.append(row_data)
+        for col_idx in range(1, 4):
+            ws.cell(row=ws.max_row, column=col_idx).font = body_font
+
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 20
+    ws.row_dimensions[1].height = 24
+
+    wb.save(output_path)
+    wb.close()
+    return output_path
 
 
 def _code_in_filename(code: str, filename: str) -> bool:
@@ -180,44 +320,30 @@ def resolve_pt_for_file(
     aliases: List[Dict[str, Any]],
     fallback_regex: Optional[re.Pattern],
     ignore_keys: set[str],
-) -> Tuple[Optional[str], str]:
-    """Resolve (pt_name, month_override) for a raw monthly file using Alias Table then optional regex."""
+) -> Optional[str]:
+    """Resolve pt_name for a raw monthly file using Alias Table then optional regex."""
     active_aliases = [
         a for a in aliases
         if a.get("enabled", True) and str(a.get("match_code", "")).strip() and str(a.get("pt_name", "")).strip()
     ]
-    # Longest match_code first so 'PJI-MXZ-26001' always wins before short tokens
     active_aliases.sort(key=lambda a: len(str(a.get("match_code", "")).strip()), reverse=True)
 
     for alias in active_aliases:
         code = str(alias.get("match_code", "")).strip()
         if _code_in_filename(code, filename):
-            return str(alias.get("pt_name", "")).strip(), str(alias.get("month_override", "")).strip()
+            return str(alias.get("pt_name", "")).strip()
 
     if fallback_regex is not None:
         key = extract_key_from_text(filename, fallback_regex)
         if key and key.upper() not in ignore_keys:
-            return key, ""
+            return key
 
-    return None, ""
+    return None
 
 
-def format_output_folder_name(
-    template: str,
-    pt_name: str,
-    month_label: str,
-    month_override: str = "",
-) -> str:
+def format_output_folder_name(template: str, pt_name: str, month_label: str) -> str:
     """Build safe folder name from template e.g. 'PJI-{PT}-{BULAN}物资结算开票资料'."""
     effective_month = month_label.strip()
-    override = month_override.strip()
-    if override:
-        effective_month = (
-            override.replace("{BULAN}", effective_month)
-            .replace("{MONTH}", effective_month)
-            .replace("{月份}", effective_month)
-        )
-
     raw = (
         template.replace("{PT}", pt_name)
         .replace("{KEY}", pt_name)
@@ -395,7 +521,7 @@ def build_create_from_files_preview(
     rules: List[Dict[str, Any]],
     monthly_rule_label: str = "Monthly File",
 ) -> List[LogicMatchEntry]:
-    """Mode 1: Scan raw files in target_root, group into created PT folders (MOVE) + inject source rules (COPY/MOVE)."""
+    """Mode 1: Scan raw files in target_root, group into created PT folders (MOVE) + inject source rules."""
     if not target_root or not os.path.isdir(target_root):
         raise ValueError("Target root folder does not exist.")
     if not folder_template.strip():
@@ -432,28 +558,22 @@ def build_create_from_files_preview(
         key=lambda e: e.name.lower(),
     )
 
-    # Group recognized files by (folder_name, pt_name)
     grouped: "OrderedDict[Tuple[str, str], List[Tuple[str, str]]]" = OrderedDict()
     unmatched_files: List[Tuple[str, str]] = []
 
     for fentry in raw_files:
-        pt_name, month_override = resolve_pt_for_file(
-            fentry.name, aliases, compiled_fallback, ignore_keys
-        )
+        pt_name = resolve_pt_for_file(fentry.name, aliases, compiled_fallback, ignore_keys)
         if not pt_name:
             unmatched_files.append((fentry.name, fentry.path))
             continue
 
-        folder_name = format_output_folder_name(
-            folder_template, pt_name, month_label, month_override
-        )
+        folder_name = format_output_folder_name(folder_template, pt_name, month_label)
         grouped.setdefault((folder_name, pt_name), []).append((fentry.name, fentry.path))
 
     entries: List[LogicMatchEntry] = []
     for (folder_name, pt_name), file_list in grouped.items():
         folder_path = os.path.join(target_root, folder_name)
 
-        # 1) Monthly files in root -> MOVE into folder_name
         for fname, fpath in file_list:
             dest_file = os.path.join(folder_path, fname)
             status = "exists_overwrite" if os.path.exists(dest_file) else "ready"
@@ -471,7 +591,6 @@ def build_create_from_files_preview(
                 )
             )
 
-        # 2) Master files from all active source folder rules (1, 2, 3+)
         _append_source_rule_entries(
             entries, folder_name, folder_path, pt_name, active_rules, source_cache
         )

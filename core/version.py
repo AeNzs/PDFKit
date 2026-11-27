@@ -6,7 +6,7 @@ import re
 from typing import Tuple
 
 APP_NAME = "PDF整理工具"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "AeNzs/PDFKit"
 INSTALLER_ASSET_HINT = "setup.exe"
 

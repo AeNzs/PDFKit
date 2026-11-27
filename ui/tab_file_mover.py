@@ -1,4 +1,4 @@
-"""Tab 2: Universal File Mover via mapping.xlsx (Program 4)."""
+"""Tab 2: Universal File & Folder Mover via mapping.xlsx (with Column C: file/folder + Mockup)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -22,13 +23,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.file_mover import MoveEntry, execute_file_moves, find_mapping_excel, load_move_entries
+from core.file_mover import (
+    MoveEntry,
+    create_mapping_mockup,
+    execute_file_moves,
+    find_mapping_excel,
+    load_move_entries,
+)
 from core.i18n import I18n
 from ui.widgets import PathPickerRow, WatermarkTableWidget, WorkerThread
 
 
 class FileMoverTab(QWidget):
-    """Module 02: Batch File Mover using Excel mapping."""
+    """Module 02: Batch File & Folder Mover using Excel mapping."""
 
     def __init__(self, i18n: I18n, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -41,7 +48,7 @@ class FileMoverTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 16)
+        root.setContentsMargins(22, 18, 22, 16)
         root.setSpacing(12)
 
         self.title_lbl = QLabel()
@@ -56,8 +63,8 @@ class FileMoverTab(QWidget):
         card = QFrame()
         card.setObjectName("Card")
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(14, 12, 14, 12)
-        card_layout.setSpacing(8)
+        card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(10)
 
         self.root_picker = PathPickerRow("", mode="dir")
         self.mapping_picker = PathPickerRow(
@@ -76,6 +83,10 @@ class FileMoverTab(QWidget):
         self.preview_btn.setCursor(Qt.PointingHandCursor)
         self.preview_btn.clicked.connect(self._load_preview)
 
+        self.mockup_btn = QPushButton()
+        self.mockup_btn.setCursor(Qt.PointingHandCursor)
+        self.mockup_btn.clicked.connect(self._download_mockup)
+
         self.open_root_btn = QPushButton()
         self.open_root_btn.setCursor(Qt.PointingHandCursor)
         self.open_root_btn.clicked.connect(self._open_root)
@@ -87,6 +98,7 @@ class FileMoverTab(QWidget):
 
         action_row.addWidget(self.auto_find_btn)
         action_row.addWidget(self.preview_btn)
+        action_row.addWidget(self.mockup_btn)
         action_row.addWidget(self.open_root_btn)
         action_row.addStretch(1)
         action_row.addWidget(self.move_btn)
@@ -106,8 +118,8 @@ class FileMoverTab(QWidget):
         self.stats_frame.setVisible(False)
         root.addWidget(self.stats_frame)
 
-        # Preview table with watermark
-        self.table = WatermarkTableWidget(0, 4)
+        # Preview table with Type column + watermark
+        self.table = WatermarkTableWidget(0, 5)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
@@ -147,14 +159,14 @@ class FileMoverTab(QWidget):
 
         self.log_box = QPlainTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(130)
+        self.log_box.setMaximumHeight(125)
         root.addWidget(self.log_box, 1)
 
     def _make_stat_card(self, parent_layout: QHBoxLayout) -> tuple[QLabel, QLabel]:
         box = QFrame()
         box.setObjectName("StatCard")
         v = QVBoxLayout(box)
-        v.setContentsMargins(12, 8, 12, 8)
+        v.setContentsMargins(14, 10, 14, 10)
         v.setSpacing(2)
         val_lbl = QLabel("0")
         val_lbl.setObjectName("StatValue")
@@ -178,6 +190,7 @@ class FileMoverTab(QWidget):
         )
         self.auto_find_btn.setText(t("btn_auto_find"))
         self.preview_btn.setText(t("btn_preview_mapping"))
+        self.mockup_btn.setText(t("btn_download_mockup"))
         self.open_root_btn.setText(t("btn_open_folder"))
         self.move_btn.setText(t("btn_run_move"))
         self.empty_lbl.setText(t("mover_empty"))
@@ -191,13 +204,15 @@ class FileMoverTab(QWidget):
             [
                 t("mover_col_row"),
                 t("mover_col_file"),
+                t("mover_col_type"),
                 t("mover_col_dest"),
                 t("mover_col_status"),
             ]
         )
-        self.table.setColumnWidth(0, 64)
-        self.table.setColumnWidth(1, 290)
-        self.table.setColumnWidth(2, 230)
+        self.table.setColumnWidth(0, 62)
+        self.table.setColumnWidth(1, 270)
+        self.table.setColumnWidth(2, 86)
+        self.table.setColumnWidth(3, 230)
 
         self.log_lbl.setText(t("log_title"))
         self.clear_log_btn.setText(t("btn_clear_log"))
@@ -224,6 +239,7 @@ class FileMoverTab(QWidget):
         return mapping.get(status, status)
 
     def _render_table(self) -> None:
+        t = self.i18n.t
         self.table.setRowCount(len(self.entries))
         self.empty_lbl.setVisible(len(self.entries) == 0)
         self.stats_frame.setVisible(len(self.entries) > 0)
@@ -239,15 +255,17 @@ class FileMoverTab(QWidget):
             elif entry.status == "error":
                 errors += 1
 
+            type_txt = t("mover_type_folder") if entry.item_type == "folder" else t("mover_type_file")
             vals = [
                 str(entry.row),
-                entry.filename,
+                entry.item_name,
+                type_txt,
                 entry.folder_name,
                 self._status_text(entry.status, entry.error_message),
             ]
             for col_idx, val in enumerate(vals):
                 item = QTableWidgetItem(val)
-                if col_idx == 0:
+                if col_idx in (0, 2):
                     item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row_idx, col_idx, item)
 
@@ -255,6 +273,28 @@ class FileMoverTab(QWidget):
         self.stat_moved_val.setText(str(moved))
         self.stat_missing_val.setText(str(missing))
         self.stat_error_val.setText(str(errors))
+
+    def _download_mockup(self) -> None:
+        t = self.i18n.t
+        start_dir = self.root_picker.path() or os.path.expanduser("~\\Desktop")
+        default_file = os.path.join(start_dir, "mapping_mockup.xlsx")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            t("dlg_save_mockup"),
+            default_file,
+            "Excel Files (*.xlsx)",
+        )
+        if not save_path:
+            return
+        if not save_path.lower().endswith(".xlsx"):
+            save_path += ".xlsx"
+        try:
+            created = create_mapping_mockup(save_path)
+            self._set_status(t("state_done"), "done")
+            QMessageBox.information(self, t("msg_info"), t("msg_mockup_saved", path=created))
+        except Exception as exc:
+            self._set_status(f"{t('state_error')} {exc}", "error")
+            QMessageBox.critical(self, t("msg_error"), str(exc))
 
     def _auto_find_mapping(self) -> None:
         t = self.i18n.t
@@ -299,7 +339,7 @@ class FileMoverTab(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(target))
 
     def _set_running(self, running: bool) -> None:
-        for btn in (self.move_btn, self.preview_btn, self.auto_find_btn):
+        for btn in (self.move_btn, self.preview_btn, self.auto_find_btn, self.mockup_btn):
             btn.setEnabled(not running)
         self.progress_bar.setVisible(running)
         if running:

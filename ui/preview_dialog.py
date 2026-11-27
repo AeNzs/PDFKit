@@ -206,7 +206,7 @@ class PdfPreviewCanvas(QWidget):
                 painter.fillRect(wrect, QColor(180, 35, 24, 30))
 
             # Draw border and rule tag
-            border_color = QColor("#B42318") if is_selected else QColor("#0F766E")
+            border_color = QColor("#0F6CBD") if is_selected else QColor("#0F766E")
             painter.setPen(QPen(border_color, 2.0 if is_selected else 1.4))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(wrect)
@@ -223,7 +223,7 @@ class PdfPreviewCanvas(QWidget):
 
             if is_selected:
                 handle = self._resize_handle_rect(wrect)
-                painter.fillRect(handle, QColor("#B42318"))
+                painter.fillRect(handle, QColor("#0F6CBD"))
                 painter.setPen(QPen(QColor("#FFFFFF"), 1.0))
                 painter.drawRect(handle)
 
